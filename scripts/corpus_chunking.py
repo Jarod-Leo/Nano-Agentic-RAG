@@ -55,7 +55,8 @@ def chunk_pages(
             if not current_text:
                 current_chunk_section = page_section
 
-            if len(current_text) + len(para) <= chunk_size:
+            extra = len(para) + (1 if current_text else 0)
+            if len(current_text) + extra <= chunk_size:
                 current_text += ("\n" if current_text else "") + para
                 if page_num not in current_pages:
                     current_pages.append(page_num)

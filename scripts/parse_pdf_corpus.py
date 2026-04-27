@@ -50,6 +50,25 @@ def detect_section_title(text: str) -> Optional[str]:
     return None
 
 
+def build_page_chunks(pages: list[dict]) -> list[dict]:
+    """Build page metadata for chunking while preserving active parser sections."""
+    page_chunks = []
+    active_section = ""
+
+    for page in pages:
+        detected_section = detect_section_title(page["text"])
+        if detected_section:
+            active_section = detected_section
+
+        page_chunks.append({
+            "page": page["page"],
+            "text": page["text"],
+            "section": active_section,
+        })
+
+    return page_chunks
+
+
 def main():
     parser = argparse.ArgumentParser(description="Parse PDF financial report to corpus.json")
     parser.add_argument("--pdf", required=True, help="Path to PDF file")
@@ -73,14 +92,7 @@ def main():
     print(f"Document title: {doc_title}")
 
     # 切块
-    page_chunks = [
-        {
-            "page": page["page"],
-            "text": page["text"],
-            "section": detect_section_title(page["text"]) or "",
-        }
-        for page in pages
-    ]
+    page_chunks = build_page_chunks(pages)
     chunks = chunk_pages(
         page_chunks,
         chunk_size=args.chunk_size,

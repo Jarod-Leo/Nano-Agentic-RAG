@@ -104,6 +104,46 @@ class ChunkPagesTest(unittest.TestCase):
 
         self.assertTrue(any("FINAL-TAIL-XYZ" in chunk["text"] for chunk in chunks))
 
+    def test_parser_flow_propagates_active_section_to_continuation_pages(self):
+        from scripts import parse_pdf_corpus
+
+        pages = [
+            {"page": 1, "text": "一、 概述\n" + ("A" * 80)},
+            {"page": 2, "text": "Continuation text on the next page that should keep the active section."},
+        ]
+
+        page_chunks = parse_pdf_corpus.build_page_chunks(pages)
+        chunks = chunk_pages(
+            page_chunks,
+            chunk_size=100,
+            overlap=20,
+            doc_prefix="fin",
+            doc_title="Sample Report",
+        )
+
+        self.assertEqual(chunks[1]["pages"], [2])
+        self.assertEqual(chunks[1]["section"], "一、 概述")
+
+    def test_chunk_size_counts_newline_separator_when_joining_paragraphs(self):
+        pages = [
+            {
+                "page": 1,
+                "text": ("A" * 50) + "\n\n" + ("B" * 50),
+                "section": "Overview",
+            }
+        ]
+
+        chunks = chunk_pages(
+            pages,
+            chunk_size=100,
+            overlap=20,
+            doc_prefix="benz_e300",
+            doc_title="Mercedes-Benz E300 Owner's Manual",
+        )
+
+        self.assertEqual(len(chunks), 2)
+        self.assertTrue(all(len(chunk["text"]) <= 100 for chunk in chunks))
+
 
 if __name__ == "__main__":
     unittest.main()
