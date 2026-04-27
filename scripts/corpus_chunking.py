@@ -70,7 +70,7 @@ def chunk_pages(
                 if len(para) > chunk_size:
                     for start in range(0, len(para), chunk_size - overlap):
                         sub = para[start:start + chunk_size]
-                        if len(sub) >= 50:
+                        if sub:
                             chunks.append(_make_chunk(
                                 doc_prefix, chunk_index, sub,
                                 doc_title, [page_num], page_section,

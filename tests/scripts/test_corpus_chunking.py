@@ -90,6 +90,20 @@ class ChunkPagesTest(unittest.TestCase):
         self.assertIn("Short intro.", joined_text)
         self.assertTrue(all(chunk["section"] == "" for chunk in chunks))
 
+    def test_long_paragraph_preserves_final_unique_tail(self):
+        long_paragraph = "".join(f"part{i:02d}-" for i in range(36)) + "FINAL-TAIL-XYZ"
+        pages = [{"page": 1, "text": long_paragraph, "section": "Overview"}]
+
+        chunks = chunk_pages(
+            pages,
+            chunk_size=100,
+            overlap=20,
+            doc_prefix="benz_e300",
+            doc_title="Mercedes-Benz E300 Owner's Manual",
+        )
+
+        self.assertTrue(any("FINAL-TAIL-XYZ" in chunk["text"] for chunk in chunks))
+
 
 if __name__ == "__main__":
     unittest.main()
