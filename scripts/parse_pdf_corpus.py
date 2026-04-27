@@ -11,13 +11,15 @@ import argparse
 import json
 import os
 import re
-import sys
+from typing import Optional
 
-import fitz  # PyMuPDF
+from corpus_chunking import chunk_pages
 
 
 def extract_text_by_page(pdf_path: str) -> list[dict]:
     """逐页提取 PDF 文本"""
+    import fitz  # PyMuPDF
+
     doc = fitz.open(pdf_path)
     pages = []
     for i, page in enumerate(doc):
@@ -28,7 +30,7 @@ def extract_text_by_page(pdf_path: str) -> list[dict]:
     return pages
 
 
-def detect_section_title(text: str) -> str | None:
+def detect_section_title(text: str) -> Optional[str]:
     """检测章节标题"""
     patterns = [
         r"^第[一二三四五六七八九十]+节\s+.+",
@@ -41,85 +43,6 @@ def detect_section_title(text: str) -> str | None:
         if re.match(p, first_line):
             return first_line
     return None
-
-
-def chunk_pages(pages: list[dict], chunk_size: int = 500,
-                overlap: int = 50, doc_title: str = "") -> list[dict]:
-    """将页面文本切成 chunk
-
-    策略：按段落分割，尽量不切断段落；超长段落强制切割
-    """
-    chunks = []
-    chunk_id = 0
-    current_text = ""
-    current_section = ""
-    current_pages = []
-
-    for page_info in pages:
-        text = page_info["text"]
-        page_num = page_info["page"]
-
-        # 检测章节
-        section = detect_section_title(text)
-        if section:
-            current_section = section
-
-        # 按段落分割（双换行或单换行+缩进）
-        paragraphs = re.split(r'\n(?=\s{2,}|\S)', text)
-
-        for para in paragraphs:
-            para = para.strip()
-            if not para:
-                continue
-
-            # 如果当前 buffer + 新段落不超限，追加
-            if len(current_text) + len(para) <= chunk_size:
-                current_text += ("\n" if current_text else "") + para
-                if page_num not in current_pages:
-                    current_pages.append(page_num)
-            else:
-                # 保存当前 chunk
-                if current_text and len(current_text) >= 50:  # 最小长度
-                    chunks.append({
-                        "chunk_id": f"fin_{chunk_id:04d}",
-                        "text": current_text,
-                        "title": f"{doc_title} - {current_section}" if current_section else doc_title,
-                        "pages": current_pages[:],
-                        "section": current_section,
-                    })
-                    chunk_id += 1
-
-                # 如果段落本身超长，强制切割
-                if len(para) > chunk_size:
-                    for start in range(0, len(para), chunk_size - overlap):
-                        sub = para[start:start + chunk_size]
-                        if len(sub) >= 50:
-                            chunks.append({
-                                "chunk_id": f"fin_{chunk_id:04d}",
-                                "text": sub,
-                                "title": f"{doc_title} - {current_section}" if current_section else doc_title,
-                                "pages": [page_num],
-                                "section": current_section,
-                            })
-                            chunk_id += 1
-                    current_text = ""
-                    current_pages = []
-                else:
-                    # overlap: 保留上一段最后部分
-                    current_text = para
-                    current_pages = [page_num]
-
-    # 最后一个 chunk
-    if current_text and len(current_text) >= 50:
-        chunks.append({
-            "chunk_id": f"fin_{chunk_id:04d}",
-            "text": current_text,
-            "title": f"{doc_title} - {current_section}" if current_section else doc_title,
-            "pages": current_pages[:],
-            "section": current_section,
-        })
-
-    return chunks
 
 
 def main():
@@ -145,7 +68,21 @@ def main():
     print(f"Document title: {doc_title}")
 
     # 切块
-    chunks = chunk_pages(pages, chunk_size=args.chunk_size, doc_title=doc_title)
+    page_chunks = [
+        {
+            "page": page["page"],
+            "text": page["text"],
+            "section": detect_section_title(page["text"]) or "",
+        }
+        for page in pages
+    ]
+    chunks = chunk_pages(
+        page_chunks,
+        chunk_size=args.chunk_size,
+        overlap=50,
+        doc_prefix="fin",
+        doc_title=doc_title,
+    )
     print(f"Generated {len(chunks)} chunks")
 
     # 统计
