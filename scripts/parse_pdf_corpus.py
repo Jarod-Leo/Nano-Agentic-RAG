@@ -15,7 +15,9 @@ from typing import Optional
 
 try:
     from scripts.corpus_chunking import chunk_pages
-except ImportError:
+except ModuleNotFoundError as exc:
+    if exc.name != "scripts":
+        raise
     from corpus_chunking import chunk_pages
 
 

@@ -50,6 +50,24 @@ class ChunkPagesTest(unittest.TestCase):
                         **config,
                     )
 
+    def test_new_chunk_uses_empty_page_section_without_carrying_previous_one(self):
+        pages = [
+            {"page": 1, "text": "A" * 80, "section": "Overview"},
+            {"page": 2, "text": "B" * 80, "section": ""},
+        ]
+
+        chunks = chunk_pages(
+            pages,
+            chunk_size=100,
+            overlap=20,
+            doc_prefix="benz_e300",
+            doc_title="Mercedes-Benz E300 Owner's Manual",
+        )
+
+        self.assertEqual(chunks[0]["section"], "Overview")
+        self.assertEqual(chunks[1]["pages"], [2])
+        self.assertEqual(chunks[1]["section"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,14 +39,11 @@ def chunk_pages(
     current_text = ""
     current_pages: list[int] = []
     current_chunk_section = ""
-    latest_section = ""
 
     for page_info in pages:
         text = page_info["text"]
         page_num = page_info["page"]
-
-        if page_info.get("section"):
-            latest_section = page_info["section"]
+        page_section = page_info.get("section", "")
 
         paragraphs = re.split(r'\n(?=\s{2,}|\S)', text)
 
@@ -56,7 +53,7 @@ def chunk_pages(
                 continue
 
             if not current_text:
-                current_chunk_section = latest_section
+                current_chunk_section = page_section
 
             if len(current_text) + len(para) <= chunk_size:
                 current_text += ("\n" if current_text else "") + para
@@ -76,7 +73,7 @@ def chunk_pages(
                         if len(sub) >= 50:
                             chunks.append(_make_chunk(
                                 doc_prefix, chunk_index, sub,
-                                doc_title, [page_num], latest_section,
+                                doc_title, [page_num], page_section,
                             ))
                             chunk_index += 1
                     current_text = ""
@@ -85,7 +82,7 @@ def chunk_pages(
                 else:
                     current_text = para
                     current_pages = [page_num]
-                    current_chunk_section = latest_section
+                    current_chunk_section = page_section
 
     if current_text and len(current_text) >= 50:
         chunks.append(_make_chunk(
