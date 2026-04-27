@@ -13,7 +13,10 @@ import os
 import re
 from typing import Optional
 
-from corpus_chunking import chunk_pages
+try:
+    from scripts.corpus_chunking import chunk_pages
+except ImportError:
+    from corpus_chunking import chunk_pages
 
 
 def extract_text_by_page(pdf_path: str) -> list[dict]:

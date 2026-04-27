@@ -27,6 +27,13 @@ def chunk_pages(
         List of corpus-compatible dicts with keys:
         ``chunk_id``, ``text``, ``title``, ``pages``, ``section``.
     """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than 0")
+    if overlap < 0:
+        raise ValueError("overlap must be greater than or equal to 0")
+    if chunk_size <= overlap:
+        raise ValueError("chunk_size must be greater than overlap")
+
     chunks: list[dict] = []
     chunk_index = 0
     current_text = ""
