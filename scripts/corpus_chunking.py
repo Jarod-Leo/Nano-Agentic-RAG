@@ -43,7 +43,7 @@ def chunk_pages(
     for page_info in pages:
         text = page_info["text"]
         page_num = page_info["page"]
-        page_section = page_info.get("section", "")
+        page_section = page_info.get("section") or ""
 
         paragraphs = re.split(r'\n(?=\s{2,}|\S)', text)
 
@@ -60,7 +60,7 @@ def chunk_pages(
                 if page_num not in current_pages:
                     current_pages.append(page_num)
             else:
-                if current_text and len(current_text) >= 50:
+                if current_text:
                     chunks.append(_make_chunk(
                         doc_prefix, chunk_index, current_text,
                         doc_title, current_pages, current_chunk_section,

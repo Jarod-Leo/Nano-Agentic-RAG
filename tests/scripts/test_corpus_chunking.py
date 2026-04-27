@@ -68,6 +68,28 @@ class ChunkPagesTest(unittest.TestCase):
         self.assertEqual(chunks[1]["pages"], [2])
         self.assertEqual(chunks[1]["section"], "")
 
+    def test_short_buffer_is_preserved_and_none_section_is_normalized(self):
+        pages = [
+            {
+                "page": 1,
+                "text": "Short intro.\n\n" + ("B" * 130),
+                "section": None,
+            }
+        ]
+
+        chunks = chunk_pages(
+            pages,
+            chunk_size=100,
+            overlap=20,
+            doc_prefix="benz_e300",
+            doc_title="Mercedes-Benz E300 Owner's Manual",
+        )
+
+        joined_text = "\n".join(chunk["text"] for chunk in chunks)
+
+        self.assertIn("Short intro.", joined_text)
+        self.assertTrue(all(chunk["section"] == "" for chunk in chunks))
+
 
 if __name__ == "__main__":
     unittest.main()
