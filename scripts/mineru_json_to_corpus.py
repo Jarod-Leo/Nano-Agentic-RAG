@@ -571,24 +571,10 @@ def main():
         entries = json.load(fh)
     print(f"  {len(entries)} entries loaded")
 
-    print("Normalizing blocks ...")
-    blocks = normalize_blocks(entries)
-    print(f"  {len(blocks)} normalized blocks")
-    for k in sorted({b["kind"] for b in blocks}):
-        count = sum(1 for b in blocks if b["kind"] == k)
-        print(f"    {k}: {count}")
-
-    title = extract_title(blocks)
-    print(f"  Title: {title}")
-
-    print("Reconstructing page text ...")
-    page_texts = reconstruct_page_text(blocks)
-    print(f"  {len(page_texts)} pages reconstructed")
-    sections = {pt["section"] for pt in page_texts if pt["section"]}
-    if sections:
-        print(f"  {len(sections)} sections detected")
-
-    print(f"Chunking (size={args.chunk_size}, overlap={args.overlap}) ...")
+    print(
+        "Building corpus "
+        f"(chunk_size={args.chunk_size}, overlap={args.overlap}) ..."
+    )
     chunks = build_corpus_from_entries(
         entries,
         chunk_prefix=args.chunk_prefix,
@@ -596,6 +582,11 @@ def main():
         overlap=args.overlap,
     )
     print(f"  {len(chunks)} chunks generated")
+    if chunks:
+        print(f"  Title: {chunks[0]['title']}")
+        sections = {chunk["section"] for chunk in chunks if chunk["section"]}
+        if sections:
+            print(f"  {len(sections)} sections detected")
 
     print("Validating ...")
     stats = _validate(chunks)
