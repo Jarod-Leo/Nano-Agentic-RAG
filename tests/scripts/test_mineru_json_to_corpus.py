@@ -3,8 +3,10 @@ import unittest
 from pathlib import Path
 
 from scripts.mineru_json_to_corpus import (
+    _chunk_pages_by_section,
     _html_table_to_text,
     _raise_on_validation_errors,
+    _validate_chunks_or_raise,
     _validate,
     extract_title,
     normalize_blocks,
@@ -121,6 +123,17 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertEqual(pages[0]["section"], "Driving")
         self.assertEqual(pages[1]["section"], "Climate Control")
 
+    def test_reconstruct_page_text_anchors_to_last_leading_heading_before_body(self):
+        blocks = [
+            {"page": 1, "kind": "heading", "text": "Controls", "level": 1, "order": 0},
+            {"page": 1, "kind": "heading", "text": "Climate Control", "level": 2, "order": 1},
+            {"page": 1, "kind": "paragraph", "text": "Set temperature with the left knob.", "level": None, "order": 2},
+        ]
+
+        pages = reconstruct_page_text(blocks)
+
+        self.assertEqual(pages[0]["section"], "Climate Control")
+
     def test_html_table_to_text_preserves_block_boundaries_and_empty_cells(self):
         html = (
             "<table>"
@@ -162,11 +175,44 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertTrue(any("bad chunk_id None" in err for err in stats["errors"]))
         self.assertTrue(any("bad chunk_id 123" in err for err in stats["errors"]))
 
+    def test_chunk_pages_by_section_keeps_fixture_sections_separate(self):
+        entries = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        blocks = normalize_blocks(entries)
+        pages = reconstruct_page_text(blocks)
+
+        chunks = _chunk_pages_by_section(
+            pages,
+            chunk_size=10_000,
+            overlap=0,
+            doc_prefix="benz_e300",
+            doc_title=extract_title(blocks),
+        )
+
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(chunks[0]["section"], "Mercedes-Benz E300 Owner's Manual")
+        self.assertEqual(chunks[1]["section"], "Climate Control")
+        self.assertNotIn("Climate Control", chunks[0]["text"])
+        self.assertNotIn("Warning: Never adjust", chunks[1]["text"])
+
     def test_raise_on_validation_errors_fails_fast(self):
         stats = {"errors": ["Chunk 0: bad chunk_id None"]}
 
         with self.assertRaises(ValueError):
             _raise_on_validation_errors(stats)
+
+    def test_validate_chunks_or_raise_uses_validation_gate(self):
+        chunks = [
+            {
+                "chunk_id": None,
+                "text": "Seat adjustment guidance.",
+                "title": "Mercedes-Benz E300 Owner's Manual",
+                "pages": [1],
+                "section": "Driving",
+            }
+        ]
+
+        with self.assertRaises(ValueError):
+            _validate_chunks_or_raise(chunks)
 
 
 if __name__ == "__main__":

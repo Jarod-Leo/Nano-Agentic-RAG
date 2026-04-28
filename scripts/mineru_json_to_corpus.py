@@ -356,19 +356,26 @@ def reconstruct_page_text(
     page_section = ""
     page_locked = False
     page_has_heading = False
+    first_heading = ""
 
     for b in sorted_blocks:
         if b["page"] != current_page:
             if current_page is not None:
-                page_sections[current_page] = page_section
+                if not page_locked and first_heading:
+                    page_sections[current_page] = first_heading
+                else:
+                    page_sections[current_page] = page_section
             current_page = b["page"]
             page_section = current_section
             page_locked = False
             page_has_heading = False
+            first_heading = ""
 
         if b["kind"] == "heading":
             current_section = b["text"]
-            if not page_locked and not page_has_heading:
+            if not page_has_heading:
+                first_heading = current_section
+            if not page_locked:
                 page_section = current_section
             page_has_heading = True
             continue
@@ -378,7 +385,10 @@ def reconstruct_page_text(
             page_locked = True
 
     if current_page is not None:
-        page_sections[current_page] = page_section
+        if not page_locked and first_heading:
+            page_sections[current_page] = first_heading
+        else:
+            page_sections[current_page] = page_section
 
     result = []
     for page_num in sorted(groups):
@@ -456,10 +466,54 @@ def _validate(chunks: list[dict]) -> dict:
     return stats
 
 
+def _validate_chunks_or_raise(chunks: list[dict]) -> dict:
+    stats = _validate(chunks)
+    _raise_on_validation_errors(stats)
+    return stats
+
+
 def _raise_on_validation_errors(stats: dict) -> None:
     errors = stats.get("errors", [])
     if errors:
         raise ValueError("Validation failed:\n" + "\n".join(errors))
+
+
+def _chunk_pages_by_section(
+    pages: list[dict],
+    chunk_size: int,
+    overlap: int,
+    doc_prefix: str,
+    doc_title: str,
+) -> list[dict]:
+    if not pages:
+        return []
+
+    runs: list[list[dict]] = []
+    current_run = [pages[0]]
+
+    for page in pages[1:]:
+        if page.get("section", "") == current_run[-1].get("section", ""):
+            current_run.append(page)
+        else:
+            runs.append(current_run)
+            current_run = [page]
+    runs.append(current_run)
+
+    chunks: list[dict] = []
+    chunk_index = 0
+    for run in runs:
+        run_chunks = chunk_pages(
+            run,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            doc_prefix=doc_prefix,
+            doc_title=doc_title,
+        )
+        for chunk in run_chunks:
+            chunk["chunk_id"] = f"{doc_prefix}_{chunk_index:04d}"
+            chunks.append(chunk)
+            chunk_index += 1
+    return chunks
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +575,7 @@ def main():
 
     # -- Stage 4: chunk --
     print(f"Chunking (size={args.chunk_size}, overlap={args.overlap}) ...")
-    chunks = chunk_pages(
+    chunks = _chunk_pages_by_section(
         page_texts,
         chunk_size=args.chunk_size,
         overlap=args.overlap,
@@ -532,17 +586,12 @@ def main():
 
     # -- validate --
     print("Validating ...")
-    stats = _validate(chunks)
+    stats = _validate_chunks_or_raise(chunks)
     if stats["lengths"]:
         print(
             f"  Lengths: min={stats['min_len']}, max={stats['max_len']}, "
             f"avg={stats['avg_len']:.0f}"
         )
-    if stats["errors"]:
-        print(f"  {len(stats['errors'])} validation error(s):")
-        for e in stats["errors"][:10]:
-            print(f"    - {e}")
-        _raise_on_validation_errors(stats)
     print("  Validation passed")
 
     # -- save --
