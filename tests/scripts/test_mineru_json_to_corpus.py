@@ -134,6 +134,25 @@ class MineruNormalizationTest(unittest.TestCase):
 
         self.assertEqual(pages[0]["section"], "Climate Control")
 
+    def test_reconstruct_page_text_splits_same_page_section_transitions(self):
+        blocks = [
+            {"page": 1, "kind": "heading", "text": "Driving", "level": 1, "order": 0},
+            {"page": 1, "kind": "paragraph", "text": "Seat adjustment guidance.", "level": None, "order": 1},
+            {"page": 1, "kind": "heading", "text": "Climate Control", "level": 1, "order": 2},
+            {"page": 1, "kind": "paragraph", "text": "Set temperature with the left knob.", "level": None, "order": 3},
+        ]
+
+        pages = reconstruct_page_text(blocks)
+
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0]["page"], 1)
+        self.assertEqual(pages[0]["section"], "Driving")
+        self.assertIn("Seat adjustment guidance.", pages[0]["text"])
+        self.assertNotIn("Set temperature with the left knob.", pages[0]["text"])
+        self.assertEqual(pages[1]["page"], 1)
+        self.assertEqual(pages[1]["section"], "Climate Control")
+        self.assertIn("Set temperature with the left knob.", pages[1]["text"])
+
     def test_html_table_to_text_preserves_block_boundaries_and_empty_cells(self):
         html = (
             "<table>"
@@ -175,6 +194,22 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertTrue(any("bad chunk_id None" in err for err in stats["errors"]))
         self.assertTrue(any("bad chunk_id 123" in err for err in stats["errors"]))
 
+    def test_validate_reports_non_string_title_and_section(self):
+        chunks = [
+            {
+                "chunk_id": "benz_e300_0000",
+                "text": "Seat adjustment guidance.",
+                "title": None,
+                "pages": [1],
+                "section": 123,
+            }
+        ]
+
+        stats = _validate(chunks)
+
+        self.assertTrue(any("bad title None" in err for err in stats["errors"]))
+        self.assertTrue(any("bad section 123" in err for err in stats["errors"]))
+
     def test_chunk_pages_by_section_keeps_fixture_sections_separate(self):
         entries = json.loads(FIXTURE.read_text(encoding="utf-8"))
         blocks = normalize_blocks(entries)
@@ -193,6 +228,29 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertEqual(chunks[1]["section"], "Climate Control")
         self.assertNotIn("Climate Control", chunks[0]["text"])
         self.assertNotIn("Warning: Never adjust", chunks[1]["text"])
+
+    def test_chunk_pages_by_section_keeps_same_page_section_transitions_separate(self):
+        blocks = [
+            {"page": 1, "kind": "heading", "text": "Driving", "level": 1, "order": 0},
+            {"page": 1, "kind": "paragraph", "text": "Seat adjustment guidance.", "level": None, "order": 1},
+            {"page": 1, "kind": "heading", "text": "Climate Control", "level": 1, "order": 2},
+            {"page": 1, "kind": "paragraph", "text": "Set temperature with the left knob.", "level": None, "order": 3},
+        ]
+        pages = reconstruct_page_text(blocks)
+
+        chunks = _chunk_pages_by_section(
+            pages,
+            chunk_size=10_000,
+            overlap=0,
+            doc_prefix="benz_e300",
+            doc_title="Mercedes-Benz E300 Owner's Manual",
+        )
+
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(chunks[0]["section"], "Driving")
+        self.assertNotIn("Set temperature with the left knob.", chunks[0]["text"])
+        self.assertEqual(chunks[1]["section"], "Climate Control")
+        self.assertIn("Set temperature with the left knob.", chunks[1]["text"])
 
     def test_raise_on_validation_errors_fails_fast(self):
         stats = {"errors": ["Chunk 0: bad chunk_id None"]}

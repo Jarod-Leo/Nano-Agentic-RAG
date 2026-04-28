@@ -343,81 +343,69 @@ def reconstruct_page_text(
     """Serialize normalized blocks into per-page readable text.
 
     Returns list of ``{"page": int, "text": str, "section": str}``.
-    Section labels are populated from heading hierarchy.
+    Section labels are populated from heading hierarchy, with page-level
+    entries split when a later heading starts a new same-page section.
     """
     groups: dict[int, list[dict]] = {}
     for b in blocks:
         groups.setdefault(b["page"], []).append(b)
 
-    sorted_blocks = sorted(blocks, key=lambda x: (x["page"], x["order"]))
-    current_section = ""
-    page_sections: dict[int, str] = {}
-    current_page = None
-    page_section = ""
-    page_locked = False
-    page_has_heading = False
-    first_heading = ""
-
-    for b in sorted_blocks:
-        if b["page"] != current_page:
-            if current_page is not None:
-                if not page_locked and first_heading:
-                    page_sections[current_page] = first_heading
-                else:
-                    page_sections[current_page] = page_section
-            current_page = b["page"]
-            page_section = current_section
-            page_locked = False
-            page_has_heading = False
-            first_heading = ""
-
-        if b["kind"] == "heading":
-            current_section = b["text"]
-            if not page_has_heading:
-                first_heading = current_section
-            if not page_locked:
-                page_section = current_section
-            page_has_heading = True
-            continue
-
-        if not page_locked:
-            page_section = current_section
-            page_locked = True
-
-    if current_page is not None:
-        if not page_locked and first_heading:
-            page_sections[current_page] = first_heading
-        else:
-            page_sections[current_page] = page_section
-
     result = []
+    current_section = ""
     for page_num in sorted(groups):
         page_blocks = sorted(groups[page_num], key=lambda x: x["order"])
-        lines = []
+        pending_headings: list[str] = []
+        segment_lines: list[str] = []
+        segment_section = ""
+        first_heading = ""
+        segment_has_body = False
+
         for b in page_blocks:
             text = b["text"].strip()
             if not text:
                 continue
             kind = b["kind"]
             if kind == "heading":
-                lines.append(f"{text}")
-            elif kind == "warning":
-                lines.append(f"{text}")
-            elif kind == "list":
-                lines.append(f"{text}")
-            elif kind == "table":
-                lines.append(f"{text}")
-            elif kind == "caption":
-                lines.append(f"({text})")
-            else:
-                lines.append(text)
+                current_section = text
+                if not first_heading:
+                    first_heading = text
+                if segment_has_body:
+                    page_text = "\n\n".join(segment_lines).strip()
+                    if page_text:
+                        result.append({
+                            "page": page_num,
+                            "text": page_text,
+                            "section": segment_section,
+                        })
+                    segment_lines = []
+                    segment_has_body = False
+                    pending_headings = [text]
+                else:
+                    pending_headings.append(text)
+                continue
 
-        page_text = "\n\n".join(lines).strip()
-        if page_text:
+            line = f"({text})" if kind == "caption" else text
+
+            if not segment_has_body:
+                segment_section = pending_headings[-1] if pending_headings else current_section
+                segment_lines = pending_headings[:]
+                pending_headings = []
+                segment_has_body = True
+            segment_lines.append(line)
+
+        if segment_has_body:
+            page_text = "\n\n".join(segment_lines).strip()
+            if page_text:
+                result.append({
+                    "page": page_num,
+                    "text": page_text,
+                    "section": segment_section,
+                })
+        elif pending_headings:
             result.append({
                 "page": page_num,
-                "text": page_text,
-                "section": page_sections.get(page_num, ""),
+                "text": "\n\n".join(pending_headings).strip(),
+                "section": first_heading,
             })
 
     return result
@@ -446,6 +434,14 @@ def _validate(chunks: list[dict]) -> dict:
             stats["lengths"].append(len(text))
         else:
             stats["errors"].append(f"Chunk {i}: bad text {text!r}")
+
+        title = c.get("title", "")
+        if not isinstance(title, str):
+            stats["errors"].append(f"Chunk {i}: bad title {title!r}")
+
+        section = c.get("section", "")
+        if not isinstance(section, str):
+            stats["errors"].append(f"Chunk {i}: bad section {section!r}")
 
         cid = c.get("chunk_id", "")
         if not isinstance(cid, str):
