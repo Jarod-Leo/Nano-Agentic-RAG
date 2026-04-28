@@ -2,12 +2,14 @@ import json
 import unittest
 from pathlib import Path
 
+from scripts.chunk_id_utils import get_doc_prefix
 from scripts.mineru_json_to_corpus import (
     _chunk_pages_by_section,
     _html_table_to_text,
     _raise_on_validation_errors,
     _validate_chunks_or_raise,
     _validate,
+    build_corpus_from_entries,
     extract_title,
     normalize_blocks,
     reconstruct_page_text,
@@ -297,6 +299,27 @@ class MineruNormalizationTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             _validate_chunks_or_raise(chunks)
+
+
+class MineruEndToEndTest(unittest.TestCase):
+    def test_builds_corpus_with_expected_schema(self):
+        entries = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        chunks = build_corpus_from_entries(
+            entries,
+            chunk_prefix="benz_e300",
+            chunk_size=120,
+            overlap=20,
+        )
+
+        self.assertTrue(chunks)
+        self.assertEqual(
+            set(chunks[0].keys()),
+            {"chunk_id", "text", "title", "pages", "section"},
+        )
+        self.assertEqual(chunks[0]["chunk_id"], "benz_e300_0000")
+        self.assertEqual(get_doc_prefix(chunks[0]["chunk_id"]), "benz_e300")
+        self.assertTrue(all(isinstance(p, int) for p in chunks[0]["pages"]))
+        self.assertTrue(any(chunk["section"] == "Climate Control" for chunk in chunks))
 
 
 if __name__ == "__main__":

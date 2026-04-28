@@ -36,6 +36,7 @@ from scripts.synthesis_llm import (
     get_stats,
     reset_stats,
 )
+from scripts.chunk_id_utils import get_doc_prefix
 
 logging.basicConfig(
     level=logging.INFO,
@@ -478,7 +479,7 @@ class DomainMultiHopPipeline:
                 pages = set(chunk_info.get("pages", []))
                 if not pages:
                     continue
-                company_prefix = cid.split("_")[0]
+                company_prefix = get_doc_prefix(cid)
                 # 扩展页码范围 ±1
                 expanded_pages = set()
                 for p in pages:

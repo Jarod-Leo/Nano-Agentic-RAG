@@ -514,6 +514,26 @@ def _chunk_pages_by_section(
     return chunks
 
 
+def build_corpus_from_entries(
+    entries: list[dict],
+    chunk_prefix: str,
+    chunk_size: int = 500,
+    overlap: int = 50,
+) -> list[dict]:
+    blocks = normalize_blocks(entries)
+    title = extract_title(blocks)
+    pages = reconstruct_page_text(blocks)
+    chunks = _chunk_pages_by_section(
+        pages,
+        chunk_size=chunk_size,
+        overlap=overlap,
+        doc_prefix=chunk_prefix,
+        doc_title=title,
+    )
+    _validate_chunks_or_raise(chunks)
+    return chunks
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -551,7 +571,6 @@ def main():
         entries = json.load(fh)
     print(f"  {len(entries)} entries loaded")
 
-    # -- Stage 1: normalize --
     print("Normalizing blocks ...")
     blocks = normalize_blocks(entries)
     print(f"  {len(blocks)} normalized blocks")
@@ -559,11 +578,9 @@ def main():
         count = sum(1 for b in blocks if b["kind"] == k)
         print(f"    {k}: {count}")
 
-    # -- Stage 2: title --
     title = extract_title(blocks)
     print(f"  Title: {title}")
 
-    # -- Stage 3: reconstruct pages --
     print("Reconstructing page text ...")
     page_texts = reconstruct_page_text(blocks)
     print(f"  {len(page_texts)} pages reconstructed")
@@ -571,20 +588,17 @@ def main():
     if sections:
         print(f"  {len(sections)} sections detected")
 
-    # -- Stage 4: chunk --
     print(f"Chunking (size={args.chunk_size}, overlap={args.overlap}) ...")
-    chunks = _chunk_pages_by_section(
-        page_texts,
+    chunks = build_corpus_from_entries(
+        entries,
+        chunk_prefix=args.chunk_prefix,
         chunk_size=args.chunk_size,
         overlap=args.overlap,
-        doc_prefix=args.chunk_prefix,
-        doc_title=title,
     )
     print(f"  {len(chunks)} chunks generated")
 
-    # -- validate --
     print("Validating ...")
-    stats = _validate_chunks_or_raise(chunks)
+    stats = _validate(chunks)
     if stats["lengths"]:
         print(
             f"  Lengths: min={stats['min_len']}, max={stats['max_len']}, "
