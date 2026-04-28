@@ -144,6 +144,25 @@ class ChunkPagesTest(unittest.TestCase):
         self.assertEqual(len(chunks), 2)
         self.assertTrue(all(len(chunk["text"]) <= 100 for chunk in chunks))
 
+    def test_force_split_long_paragraph_preserves_short_final_eof_tail(self):
+        pages = [
+            {
+                "page": 1,
+                "text": ("A" * 130) + "\n\nSHORT-FINAL-TAIL",
+                "section": "Overview",
+            }
+        ]
+
+        chunks = chunk_pages(
+            pages,
+            chunk_size=100,
+            overlap=20,
+            doc_prefix="benz_e300",
+            doc_title="Mercedes-Benz E300 Owner's Manual",
+        )
+
+        self.assertTrue(any("SHORT-FINAL-TAIL" in chunk["text"] for chunk in chunks))
+
 
 if __name__ == "__main__":
     unittest.main()

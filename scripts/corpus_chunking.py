@@ -85,7 +85,7 @@ def chunk_pages(
                     current_pages = [page_num]
                     current_chunk_section = page_section
 
-    if current_text and len(current_text) >= 50:
+    if current_text:
         chunks.append(_make_chunk(
             doc_prefix, chunk_index, current_text,
             doc_title, current_pages, current_chunk_section,
