@@ -437,9 +437,12 @@ def _validate(chunks: list[dict]) -> dict:
             stats["errors"].append(f"Chunk {i}: bad text {text!r}")
 
         cid = c.get("chunk_id", "")
-        parts = cid.rsplit("_", 1)
-        if len(parts) != 2 or not parts[1].isdigit():
+        if not isinstance(cid, str):
             stats["errors"].append(f"Chunk {i}: bad chunk_id {cid!r}")
+        else:
+            parts = cid.rsplit("_", 1)
+            if len(parts) != 2 or not parts[1].isdigit():
+                stats["errors"].append(f"Chunk {i}: bad chunk_id {cid!r}")
         pages = c.get("pages", [])
         if not isinstance(pages, list) or not all(isinstance(p, int) for p in pages):
             stats["errors"].append(f"Chunk {i}: bad pages {pages!r}")

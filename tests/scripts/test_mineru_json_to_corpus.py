@@ -4,6 +4,7 @@ from pathlib import Path
 
 from scripts.mineru_json_to_corpus import (
     _html_table_to_text,
+    _validate,
     extract_title,
     normalize_blocks,
     reconstruct_page_text,
@@ -119,6 +120,31 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertEqual(lines[0], "Front Left: 240 kPa Normal load")
         self.assertEqual(lines[1], "Rear:")
         self.assertEqual(lines[2], "Spare Temporary: 420 kPa")
+
+    def test_validate_reports_non_string_chunk_id_without_throwing(self):
+        chunks = [
+            {
+                "chunk_id": None,
+                "text": "Seat adjustment guidance.",
+                "title": "Mercedes-Benz E300 Owner's Manual",
+                "pages": [1],
+                "section": "Driving",
+            },
+            {
+                "chunk_id": 123,
+                "text": "Climate guidance.",
+                "title": "Mercedes-Benz E300 Owner's Manual",
+                "pages": [2],
+                "section": "Climate Control",
+            },
+        ]
+
+        stats = _validate(chunks)
+
+        self.assertEqual(stats["count"], 2)
+        self.assertGreaterEqual(len(stats["errors"]), 2)
+        self.assertTrue(any("bad chunk_id None" in err for err in stats["errors"]))
+        self.assertTrue(any("bad chunk_id 123" in err for err in stats["errors"]))
 
 
 if __name__ == "__main__":
