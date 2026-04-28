@@ -252,6 +252,32 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertEqual(chunks[1]["section"], "Climate Control")
         self.assertIn("Set temperature with the left knob.", chunks[1]["text"])
 
+    def test_trailing_heading_segment_uses_new_section_before_next_page_body(self):
+        blocks = [
+            {"page": 1, "kind": "heading", "text": "Driving", "level": 1, "order": 0},
+            {"page": 1, "kind": "paragraph", "text": "Seat adjustment guidance.", "level": None, "order": 1},
+            {"page": 1, "kind": "heading", "text": "Climate Control", "level": 1, "order": 2},
+            {"page": 2, "kind": "paragraph", "text": "Set temperature with the left knob.", "level": None, "order": 3},
+        ]
+
+        pages = reconstruct_page_text(blocks)
+        chunks = _chunk_pages_by_section(
+            pages,
+            chunk_size=10_000,
+            overlap=0,
+            doc_prefix="benz_e300",
+            doc_title="Mercedes-Benz E300 Owner's Manual",
+        )
+
+        self.assertEqual(len(pages), 3)
+        self.assertEqual(pages[1]["section"], "Climate Control")
+        self.assertIn("Climate Control", pages[1]["text"])
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(chunks[0]["section"], "Driving")
+        self.assertNotIn("Climate Control", chunks[0]["text"])
+        self.assertEqual(chunks[1]["section"], "Climate Control")
+        self.assertIn("Set temperature with the left knob.", chunks[1]["text"])
+
     def test_raise_on_validation_errors_fails_fast(self):
         stats = {"errors": ["Chunk 0: bad chunk_id None"]}
 

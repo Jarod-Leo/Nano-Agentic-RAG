@@ -359,6 +359,7 @@ def reconstruct_page_text(
         segment_section = ""
         first_heading = ""
         segment_has_body = False
+        emitted_body_segment = False
 
         for b in page_blocks:
             text = b["text"].strip()
@@ -377,6 +378,7 @@ def reconstruct_page_text(
                             "text": page_text,
                             "section": segment_section,
                         })
+                        emitted_body_segment = True
                     segment_lines = []
                     segment_has_body = False
                     pending_headings = [text]
@@ -405,7 +407,7 @@ def reconstruct_page_text(
             result.append({
                 "page": page_num,
                 "text": "\n\n".join(pending_headings).strip(),
-                "section": first_heading,
+                "section": pending_headings[-1] if emitted_body_segment else first_heading,
             })
 
     return result
