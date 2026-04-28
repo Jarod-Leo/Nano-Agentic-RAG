@@ -4,6 +4,7 @@ from pathlib import Path
 
 from scripts.mineru_json_to_corpus import (
     _html_table_to_text,
+    _raise_on_validation_errors,
     _validate,
     extract_title,
     normalize_blocks,
@@ -79,6 +80,21 @@ class MineruNormalizationTest(unittest.TestCase):
 
         self.assertEqual(extract_title(blocks), "Mercedes-Benz E300 Owner's Manual")
 
+    def test_extract_title_prefers_lower_heading_level_on_page_one(self):
+        blocks = [
+            {"page": 1, "kind": "heading", "text": "Climate Control", "level": 2, "order": 0, "source_type": "text"},
+            {
+                "page": 1,
+                "kind": "heading",
+                "text": "Mercedes-Benz E300 Owner's Manual",
+                "level": 1,
+                "order": 1,
+                "source_type": "text",
+            },
+        ]
+
+        self.assertEqual(extract_title(blocks), "Mercedes-Benz E300 Owner's Manual")
+
     def test_reconstruct_page_text_anchors_section_to_start_of_page(self):
         blocks = [
             {"page": 1, "kind": "heading", "text": "Driving", "level": 1, "order": 0},
@@ -145,6 +161,12 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertGreaterEqual(len(stats["errors"]), 2)
         self.assertTrue(any("bad chunk_id None" in err for err in stats["errors"]))
         self.assertTrue(any("bad chunk_id 123" in err for err in stats["errors"]))
+
+    def test_raise_on_validation_errors_fails_fast(self):
+        stats = {"errors": ["Chunk 0: bad chunk_id None"]}
+
+        with self.assertRaises(ValueError):
+            _raise_on_validation_errors(stats)
 
 
 if __name__ == "__main__":

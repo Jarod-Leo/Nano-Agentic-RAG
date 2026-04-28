@@ -317,6 +317,7 @@ def extract_title(blocks: list[dict]) -> str:
             key=lambda b: (
                 0 if b["page"] == 1 and b.get("source_type") == "title" else 1,
                 0 if b["page"] == 1 else 1,
+                b.get("level") if isinstance(b.get("level"), int) else 999,
                 b["page"],
                 b["order"],
             )
@@ -455,6 +456,12 @@ def _validate(chunks: list[dict]) -> dict:
     return stats
 
 
+def _raise_on_validation_errors(stats: dict) -> None:
+    errors = stats.get("errors", [])
+    if errors:
+        raise ValueError("Validation failed:\n" + "\n".join(errors))
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -535,8 +542,8 @@ def main():
         print(f"  {len(stats['errors'])} validation error(s):")
         for e in stats["errors"][:10]:
             print(f"    - {e}")
-    else:
-        print("  Validation passed")
+        _raise_on_validation_errors(stats)
+    print("  Validation passed")
 
     # -- save --
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
