@@ -1,0 +1,40 @@
+[
+  {
+    "type": "title",
+    "page_idx": 0,
+    "text": "Mercedes-Benz E300 Owner's Manual",
+    "text_level": 1
+  },
+  {
+    "type": "text",
+    "page_idx": 0,
+    "text": "Warning: Never adjust the driver's seat while the vehicle is moving."
+  },
+  {
+    "type": "table",
+    "page_idx": 0,
+    "table_caption": ["Recommended cold tire pressure"],
+    "table_body": "<table><tr><td>Front</td><td>240 kPa</td></tr><tr><td>Rear</td><td>250 kPa</td></tr></table>",
+    "table_footnote": ["Applies to normal load."]
+  },
+  {
+    "type": "text",
+    "page_idx": 1,
+    "text": "Climate Control",
+    "text_level": 1
+  },
+  {
+    "type": "list",
+    "page_idx": 1,
+    "list_items": [
+      "1. Press MENU.",
+      "2. Select Climate.",
+      "3. Turn the left knob to increase temperature."
+    ]
+  },
+  {
+    "type": "image",
+    "page_idx": 1,
+    "image_caption": ["Air outlet direction control switch"]
+  }
+]
