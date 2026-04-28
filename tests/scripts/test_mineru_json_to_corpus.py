@@ -57,6 +57,26 @@ class MineruNormalizationTest(unittest.TestCase):
 
         self.assertEqual(extract_title(blocks), "Mercedes-Benz E300 Owner's Manual")
 
+    def test_extract_title_prefers_page_one_title_block_over_same_page_heading(self):
+        entries = [
+            {
+                "type": "text",
+                "page_idx": 0,
+                "text": "Climate Control",
+                "text_level": 1,
+            },
+            {
+                "type": "title",
+                "page_idx": 0,
+                "text": "Mercedes-Benz E300 Owner's Manual",
+                "text_level": 1,
+            },
+        ]
+
+        blocks = normalize_blocks(entries)
+
+        self.assertEqual(extract_title(blocks), "Mercedes-Benz E300 Owner's Manual")
+
     def test_reconstruct_page_text_anchors_section_to_start_of_page(self):
         blocks = [
             {"page": 1, "kind": "heading", "text": "Driving", "level": 1, "order": 0},

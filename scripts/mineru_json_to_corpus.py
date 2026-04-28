@@ -130,6 +130,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
     * ``kind``   — heading | paragraph | list | table | caption | warning
     * ``text``   — plain-text content
     * ``level``  — heading level (int) or None
+    * ``source_type`` — MinerU entry type for provenance-sensitive cases
     * ``order``  — global reading order (int)
     """
     blocks: list[dict] = []
@@ -151,6 +152,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                     "kind": "heading",
                     "text": text,
                     "level": text_level or 1,
+                    "source_type": entry_type,
                     "order": order,
                 })
                 order += 1
@@ -166,6 +168,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                     "kind": kind,
                     "text": text,
                     "level": None,
+                    "source_type": entry_type,
                     "order": order,
                 })
                 order += 1
@@ -182,6 +185,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                         "kind": "list",
                         "text": text,
                         "level": None,
+                        "source_type": entry_type,
                         "order": order,
                     })
                     order += 1
@@ -206,6 +210,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                     "kind": "table",
                     "text": text,
                     "level": None,
+                    "source_type": entry_type,
                     "order": order,
                 })
                 order += 1
@@ -222,6 +227,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                         "kind": "caption",
                         "text": cap,
                         "level": None,
+                        "source_type": entry_type,
                         "order": order,
                     })
                     order += 1
@@ -232,6 +238,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                     "kind": "paragraph",
                     "text": content.strip(),
                     "level": None,
+                    "source_type": entry_type,
                     "order": order,
                 })
                 order += 1
@@ -246,6 +253,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                     "kind": "paragraph",
                     "text": text,
                     "level": None,
+                    "source_type": entry_type,
                     "order": order,
                 })
                 order += 1
@@ -260,6 +268,7 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
                     "kind": "paragraph",
                     "text": body.strip(),
                     "level": None,
+                    "source_type": entry_type,
                     "order": order,
                 })
                 order += 1
@@ -279,11 +288,13 @@ def normalize_blocks(entries: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def extract_title(blocks: list[dict]) -> str:
-    """Extract document title per the spec priority rules.
+    """Extract the document title with page-1 title provenance priority.
 
-    1. first heading block (any page)
-    2. first heading on page 1
-    3. first non-empty text near page 1
+    Priority:
+    1. MinerU ``type: "title"`` headings on page 1
+    2. Other heading blocks on page 1
+    3. Heading blocks on later pages
+    4. First non-empty block text on page 1
     """
     heading_blocks = [
         b for b in blocks
@@ -291,7 +302,12 @@ def extract_title(blocks: list[dict]) -> str:
     ]
     if heading_blocks:
         heading_blocks.sort(
-            key=lambda b: (0 if b["page"] == 1 else 1, b["page"], b["order"])
+            key=lambda b: (
+                0 if b["page"] == 1 and b.get("source_type") == "title" else 1,
+                0 if b["page"] == 1 else 1,
+                b["page"],
+                b["order"],
+            )
         )
         return heading_blocks[0]["text"]
 
