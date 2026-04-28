@@ -587,15 +587,11 @@ def main():
         sections = {chunk["section"] for chunk in chunks if chunk["section"]}
         if sections:
             print(f"  {len(sections)} sections detected")
-
-    print("Validating ...")
-    stats = _validate(chunks)
-    if stats["lengths"]:
+        lengths = [len(chunk["text"]) for chunk in chunks]
         print(
-            f"  Lengths: min={stats['min_len']}, max={stats['max_len']}, "
-            f"avg={stats['avg_len']:.0f}"
+            f"  Lengths: min={min(lengths)}, max={max(lengths)}, "
+            f"avg={sum(lengths) / len(lengths):.0f}"
         )
-    print("  Validation passed")
 
     # -- save --
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
