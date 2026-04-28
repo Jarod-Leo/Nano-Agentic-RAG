@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from scripts.mineru_json_to_corpus import (
+    _html_table_to_text,
     extract_title,
     normalize_blocks,
     reconstruct_page_text,
@@ -90,6 +91,34 @@ class MineruNormalizationTest(unittest.TestCase):
 
         self.assertEqual(pages[0]["section"], "Driving")
         self.assertEqual(pages[1]["section"], "Climate Control")
+
+    def test_reconstruct_page_text_anchors_heading_only_page_to_first_heading(self):
+        blocks = [
+            {"page": 1, "kind": "heading", "text": "Driving", "level": 1, "order": 0},
+            {"page": 1, "kind": "heading", "text": "Climate Control", "level": 1, "order": 1},
+            {"page": 2, "kind": "paragraph", "text": "Airflow guidance.", "level": None, "order": 2},
+        ]
+
+        pages = reconstruct_page_text(blocks)
+
+        self.assertEqual(pages[0]["section"], "Driving")
+        self.assertEqual(pages[1]["section"], "Climate Control")
+
+    def test_html_table_to_text_preserves_block_boundaries_and_empty_cells(self):
+        html = (
+            "<table>"
+            "<tr><td><p>Front<br>Left</p></td><td><div>240 kPa</div><div>Normal load</div></td></tr>"
+            "<tr><td>Rear</td><td></td></tr>"
+            "<tr><td><ul><li>Spare</li><li>Temporary</li></ul></td><td>420 kPa</td></tr>"
+            "</table>"
+        )
+
+        text = _html_table_to_text(html)
+        lines = text.splitlines()
+
+        self.assertEqual(lines[0], "Front Left: 240 kPa Normal load")
+        self.assertEqual(lines[1], "Rear:")
+        self.assertEqual(lines[2], "Spare Temporary: 420 kPa")
 
 
 if __name__ == "__main__":

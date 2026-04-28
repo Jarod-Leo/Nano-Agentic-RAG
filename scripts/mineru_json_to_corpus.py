@@ -25,7 +25,9 @@ from typing import Optional
 
 try:
     from scripts.corpus_chunking import chunk_pages
-except ImportError:
+except ModuleNotFoundError as exc:
+    if exc.name != "scripts":
+        raise
     from corpus_chunking import chunk_pages
 
 
@@ -66,6 +68,8 @@ def _find_content_list(input_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 class _TableHTMLParser(HTMLParser):
+    _BLOCK_TAGS = {"br", "div", "li", "p"}
+
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[list[str]] = []
@@ -79,16 +83,23 @@ class _TableHTMLParser(HTMLParser):
         elif tag in {"td", "th"}:
             self._in_cell = True
             self._cell_parts = []
+        elif self._in_cell and tag in self._BLOCK_TAGS:
+            self._cell_parts.append("\n")
 
     def handle_data(self, data: str) -> None:
         if self._in_cell:
             self._cell_parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        if self._in_cell and tag in self._BLOCK_TAGS and (
+            not self._cell_parts or self._cell_parts[-1] != "\n"
+        ):
+            self._cell_parts.append("\n")
         if tag in {"td", "th"}:
-            cell = unescape("".join(self._cell_parts)).strip()
-            if cell:
-                self._row.append(cell)
+            cell = unescape("".join(self._cell_parts))
+            cell = re.sub(r"\s*\n\s*", " ", cell)
+            cell = re.sub(r"\s+", " ", cell).strip()
+            self._row.append(cell)
             self._cell_parts = []
             self._in_cell = False
         elif tag == "tr":
@@ -111,7 +122,8 @@ def _html_table_to_text(html_body: str) -> str:
         if len(cells) == 1:
             lines.append(cells[0])
         elif len(cells) == 2:
-            lines.append(f"{cells[0]}: {cells[1]}")
+            line = f"{cells[0]}: {cells[1]}".rstrip()
+            lines.append(line)
         else:
             lines.append(' | '.join(cells))
     return '\n'.join(lines)
@@ -124,7 +136,7 @@ def _is_warning(text: str) -> bool:
 def normalize_blocks(entries: list[dict]) -> list[dict]:
     """Convert MinerU ``content_list.json`` entries to normalized blocks.
 
-    Returns a list of dicts sorted by (page, order), each with:
+    Returns a list of dicts in MinerU reading order, each with:
 
     * ``page``   — 1-based page number
     * ``kind``   — heading | paragraph | list | table | caption | warning
@@ -342,6 +354,7 @@ def reconstruct_page_text(
     current_page = None
     page_section = ""
     page_locked = False
+    page_has_heading = False
 
     for b in sorted_blocks:
         if b["page"] != current_page:
@@ -350,11 +363,13 @@ def reconstruct_page_text(
             current_page = b["page"]
             page_section = current_section
             page_locked = False
+            page_has_heading = False
 
         if b["kind"] == "heading":
             current_section = b["text"]
-            if not page_locked:
+            if not page_locked and not page_has_heading:
                 page_section = current_section
+            page_has_heading = True
             continue
 
         if not page_locked:
@@ -405,13 +420,22 @@ def _validate(chunks: list[dict]) -> dict:
     required = {"chunk_id", "text", "title", "pages", "section"}
     stats: dict = {"count": len(chunks), "errors": [], "lengths": []}
     for i, c in enumerate(chunks):
+        if not isinstance(c, dict):
+            stats["errors"].append(f"Chunk {i}: not a dict")
+            continue
         missing = required - set(c.keys())
         extra = set(c.keys()) - required
         if missing:
             stats["errors"].append(f"Chunk {i}: missing {missing}")
         if extra:
             stats["errors"].append(f"Chunk {i}: extra {extra}")
-        stats["lengths"].append(len(c["text"]))
+
+        text = c.get("text", "")
+        if isinstance(text, str):
+            stats["lengths"].append(len(text))
+        else:
+            stats["errors"].append(f"Chunk {i}: bad text {text!r}")
+
         cid = c.get("chunk_id", "")
         parts = cid.rsplit("_", 1)
         if len(parts) != 2 or not parts[1].isdigit():
