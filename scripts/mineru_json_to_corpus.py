@@ -285,15 +285,22 @@ def extract_title(blocks: list[dict]) -> str:
     2. first heading on page 1
     3. first non-empty text near page 1
     """
-    for b in blocks:
-        if b["kind"] == "heading":
-            return b["text"]
-    for b in blocks:
-        if b["kind"] == "heading" and b["page"] == 1:
-            return b["text"]
-    for b in blocks:
-        if b["page"] == 1 and b["text"].strip():
-            return b["text"][:100]
+    heading_blocks = [
+        b for b in blocks
+        if b["kind"] == "heading" and b["text"].strip()
+    ]
+    if heading_blocks:
+        heading_blocks.sort(
+            key=lambda b: (0 if b["page"] == 1 else 1, b["page"], b["order"])
+        )
+        return heading_blocks[0]["text"]
+
+    page_one_blocks = sorted(
+        (b for b in blocks if b["page"] == 1 and b["text"].strip()),
+        key=lambda b: (b["page"], b["order"]),
+    )
+    if page_one_blocks:
+        return page_one_blocks[0]["text"][:100]
     return "Untitled"
 
 
@@ -313,14 +320,33 @@ def reconstruct_page_text(
     for b in blocks:
         groups.setdefault(b["page"], []).append(b)
 
-    # Build a page -> current-section map by scanning headings in order
+    sorted_blocks = sorted(blocks, key=lambda x: (x["page"], x["order"]))
     current_section = ""
     page_sections: dict[int, str] = {}
+    current_page = None
+    page_section = ""
+    page_locked = False
 
-    for b in sorted(blocks, key=lambda x: (x["page"], x["order"])):
+    for b in sorted_blocks:
+        if b["page"] != current_page:
+            if current_page is not None:
+                page_sections[current_page] = page_section
+            current_page = b["page"]
+            page_section = current_section
+            page_locked = False
+
         if b["kind"] == "heading":
             current_section = b["text"]
-        page_sections[b["page"]] = current_section
+            if not page_locked:
+                page_section = current_section
+            continue
+
+        if not page_locked:
+            page_section = current_section
+            page_locked = True
+
+    if current_page is not None:
+        page_sections[current_page] = page_section
 
     result = []
     for page_num in sorted(groups):

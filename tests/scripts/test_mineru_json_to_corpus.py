@@ -22,12 +22,54 @@ class MineruNormalizationTest(unittest.TestCase):
         self.assertTrue(
             any("Front: 240 kPa" in b["text"] for b in blocks if b["kind"] == "table")
         )
+        self.assertTrue(
+            any(
+                "Recommended cold tire pressure" in b["text"]
+                for b in blocks
+                if b["kind"] == "table"
+            )
+        )
+        self.assertTrue(
+            any(
+                "Applies to normal load." in b["text"]
+                for b in blocks
+                if b["kind"] == "table"
+            )
+        )
 
         pages = reconstruct_page_text(blocks)
         self.assertEqual(pages[0]["section"], "Mercedes-Benz E300 Owner's Manual")
         self.assertEqual(pages[1]["section"], "Climate Control")
         self.assertIn("1. Press MENU.", pages[1]["text"])
         self.assertIn("(Air outlet direction control switch)", pages[1]["text"])
+
+    def test_extract_title_prefers_page_one_heading_over_out_of_order_later_heading(self):
+        blocks = [
+            {"page": 2, "kind": "heading", "text": "Climate Control", "level": 1, "order": 0},
+            {
+                "page": 1,
+                "kind": "heading",
+                "text": "Mercedes-Benz E300 Owner's Manual",
+                "level": 1,
+                "order": 1,
+            },
+        ]
+
+        self.assertEqual(extract_title(blocks), "Mercedes-Benz E300 Owner's Manual")
+
+    def test_reconstruct_page_text_anchors_section_to_start_of_page(self):
+        blocks = [
+            {"page": 1, "kind": "heading", "text": "Driving", "level": 1, "order": 0},
+            {"page": 1, "kind": "paragraph", "text": "Seat adjustment guidance.", "level": None, "order": 1},
+            {"page": 1, "kind": "heading", "text": "Climate Control", "level": 1, "order": 2},
+            {"page": 1, "kind": "list", "text": "1. Press MENU.", "level": None, "order": 3},
+            {"page": 2, "kind": "paragraph", "text": "Temperature remains stable.", "level": None, "order": 4},
+        ]
+
+        pages = reconstruct_page_text(blocks)
+
+        self.assertEqual(pages[0]["section"], "Driving")
+        self.assertEqual(pages[1]["section"], "Climate Control")
 
 
 if __name__ == "__main__":
