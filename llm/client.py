@@ -85,11 +85,21 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_name="Qwen/Qwen3-32B",
         max_len=131072,
     ),
-    "gpt-oss-120b": ModelConfig(
+    "DeepSeek-V4-Pro": ModelConfig(
         url=JUDGE_BASE_URL,
-        model_name="gpt-oss-120b",
-        max_len=131072,
+        model_name="deepseek-v4-pro",
+        api_key=os.environ.get("OPENAI_API_KEY", ""),
     ),
+    "MiniMax-M2.7": ModelConfig(
+        url="https://api.minimaxi.com/v1",
+        model_name="MiniMax-M2.7",
+        api_key=os.environ.get("MiniMax_API_KEY", ""),
+    ),
+    "DeepSeek-V4-Flash": ModelConfig(
+        url=JUDGE_BASE_URL,
+        model_name="deepseek-v4-flash",
+        api_key=os.environ.get("OPENAI_API_KEY", ""),
+    ),        
 }
 
 
