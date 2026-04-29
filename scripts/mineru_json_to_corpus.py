@@ -12,7 +12,8 @@ Usage:
     --output data/manuals/corpus.json \\
     --chunk-prefix benz_e300 \\
     --chunk-size 500 \\
-    --overlap 50
+    --overlap 50 \\
+    --title "My Custom Title"
 """
 
 import argparse
@@ -519,9 +520,10 @@ def build_corpus_from_entries(
     chunk_prefix: str,
     chunk_size: int = 500,
     overlap: int = 50,
+    doc_title: str = "",
 ) -> list[dict]:
     blocks = normalize_blocks(entries)
-    title = extract_title(blocks)
+    title = doc_title or extract_title(blocks)
     pages = reconstruct_page_text(blocks)
     chunks = _chunk_pages_by_section(
         pages,
@@ -562,6 +564,10 @@ def main():
         "--overlap", type=int, default=50,
         help="Overlap chars between chunks (default: 50)",
     )
+    parser.add_argument(
+        "--title", default="",
+        help="Document title (auto-detected if empty)",
+    )
     args = parser.parse_args()
 
     # -- resolve input --
@@ -580,6 +586,7 @@ def main():
         chunk_prefix=args.chunk_prefix,
         chunk_size=args.chunk_size,
         overlap=args.overlap,
+        doc_title=args.title,
     )
     print(f"  {len(chunks)} chunks generated")
     if chunks:
