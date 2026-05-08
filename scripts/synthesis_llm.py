@@ -14,7 +14,18 @@ logger = logging.getLogger("synthesis")
 
 # ---------- 全局统计 ----------
 _stats_lock = threading.Lock()
-_stats = {"calls": 0, "errors": 0, "total_latency": 0.0}
+_stats = {
+    "calls": 0,
+    "errors": 0,
+    "total_latency": 0.0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "cached_tokens": 0,
+    "calls_with_usage": 0,
+    "by_model": {},
+}
+_thread_stats = threading.local()
 
 # ---------- 并发控制 ----------
 _semaphore = None
@@ -28,22 +39,115 @@ def init_concurrency(max_concurrent: int = 20):
 
 def get_stats() -> dict:
     with _stats_lock:
-        return dict(_stats)
+        stats = dict(_stats)
+        stats["by_model"] = {model: dict(values) for model, values in _stats["by_model"].items()}
+        return stats
 
 
 def reset_stats():
     with _stats_lock:
-        _stats["calls"] = 0
-        _stats["errors"] = 0
-        _stats["total_latency"] = 0.0
+        for key in _stats:
+            if key == "by_model":
+                _stats[key] = {}
+            else:
+                _stats[key] = 0.0 if key == "total_latency" else 0
 
 
-def _record_call(latency: float, error: bool = False):
+def _empty_usage_stats() -> dict:
+    return {
+        "calls": 0,
+        "errors": 0,
+        "total_latency": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_tokens": 0,
+        "calls_with_usage": 0,
+        "by_model": {},
+    }
+
+
+def begin_seed_stats():
+    """Start per-thread LLM stats for one seed item."""
+    _thread_stats.current = _empty_usage_stats()
+
+
+def end_seed_stats() -> dict:
+    """Finish and return per-thread LLM stats for one seed item."""
+    current = getattr(_thread_stats, "current", None)
+    _thread_stats.current = None
+    if current is None:
+        return _empty_usage_stats()
+    result = dict(current)
+    result["by_model"] = {model: dict(values) for model, values in current.get("by_model", {}).items()}
+    return result
+
+
+def _get_nested_int(data: dict, paths: list[tuple[str, ...]]) -> int:
+    for path in paths:
+        cur = data
+        for key in path:
+            if not isinstance(cur, dict) or key not in cur:
+                cur = None
+                break
+            cur = cur[key]
+        if isinstance(cur, int):
+            return cur
+    return 0
+
+
+def _extract_usage_counts(usage: dict | None) -> dict:
+    usage = usage or {}
+    prompt_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+    total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
+    cached_tokens = _get_nested_int(usage, [
+        ("prompt_tokens_details", "cached_tokens"),
+        ("input_tokens_details", "cached_tokens"),
+        ("input_token_details", "cache_read"),
+        ("usage", "prompt_tokens_details", "cached_tokens"),
+    ])
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "cached_tokens": cached_tokens,
+        "calls_with_usage": 1 if usage else 0,
+    }
+
+
+def _add_counts(target: dict, counts: dict):
+    for key, value in counts.items():
+        target[key] = target.get(key, 0) + value
+
+
+def _add_model_counts(stats: dict, model: str, latency: float, error: bool, usage_counts: dict):
+    by_model = stats.setdefault("by_model", {})
+    model_stats = by_model.setdefault(model, _empty_usage_stats())
+    model_stats["calls"] += 1
+    model_stats["total_latency"] += latency
+    _add_counts(model_stats, usage_counts)
+    if error:
+        model_stats["errors"] += 1
+
+
+def _record_call(model: str, latency: float, error: bool = False, usage: dict | None = None):
+    usage_counts = _extract_usage_counts(usage)
     with _stats_lock:
         _stats["calls"] += 1
         _stats["total_latency"] += latency
+        _add_counts(_stats, usage_counts)
         if error:
             _stats["errors"] += 1
+        _add_model_counts(_stats, model, latency, error, usage_counts)
+    current = getattr(_thread_stats, "current", None)
+    if current is not None:
+        current["calls"] += 1
+        current["total_latency"] += latency
+        _add_counts(current, usage_counts)
+        if error:
+            current["errors"] += 1
+        _add_model_counts(current, model, latency, error, usage_counts)
 
 
 # ---------- JSON 解析 ----------
@@ -85,11 +189,14 @@ def llm_call(prompt: str, model: str = "gpt-oss-120b", temperature: float = 0.7,
     try:
         t0 = time.time()
         from llm.client import get_from_llm
-        resp = get_from_llm(prompt, model_name=model, temperature=temperature)
-        _record_call(time.time() - t0)
+        resp = get_from_llm(prompt, model_name=model, temperature=temperature, return_usage=True)
+        usage = None
+        if isinstance(resp, tuple):
+            resp, usage = resp
+        _record_call(model, time.time() - t0, usage=usage)
         return resp or ""
     except Exception as e:
-        _record_call(time.time() - t0 if 't0' in dir() else 0, error=True)
+        _record_call(model, time.time() - t0 if 't0' in dir() else 0, error=True)
         raise
     finally:
         if sem:
