@@ -35,6 +35,8 @@ from scripts.synthesis_llm import (
     init_concurrency,
     get_stats,
     reset_stats,
+    begin_seed_stats,
+    end_seed_stats,
 )
 from scripts.chunk_id_utils import get_doc_prefix
 
@@ -48,6 +50,13 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("multihop_synthesis")
+usage_logger = logging.getLogger("multihop_synthesis.llm_usage")
+usage_logger.setLevel(logging.INFO)
+usage_logger.propagate = False
+if not usage_logger.handlers:
+    usage_handler = logging.FileHandler("logs/domain_multihop_llm_usage.log", encoding="utf-8")
+    usage_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    usage_logger.addHandler(usage_handler)
 
 # ============================================================
 # 文本工具（复刻 AgenticRAGTracer）
@@ -1148,7 +1157,89 @@ def main():
     global_idx = [0]  # mutable counter
     total_valid = [0]
 
+    def _new_llm_stats():
+        return {
+            "calls": 0,
+            "errors": 0,
+            "total_latency": 0.0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cached_tokens": 0,
+            "calls_with_usage": 0,
+            "by_model": {},
+        }
+
+    def _add_llm_stats(target, delta):
+        for key in target:
+            if key == "by_model":
+                for model, model_delta in delta.get("by_model", {}).items():
+                    model_target = target["by_model"].setdefault(model, _new_llm_stats())
+                    _add_llm_stats(model_target, model_delta)
+            else:
+                target[key] += delta.get(key, 0)
+
+    def _diff_llm_stats(current, previous):
+        diff = {}
+        for key in current:
+            if key == "by_model":
+                models = set(current.get("by_model", {})) | set(previous.get("by_model", {}))
+                diff["by_model"] = {
+                    model: _diff_llm_stats(
+                        current.get("by_model", {}).get(model, _new_llm_stats()),
+                        previous.get("by_model", {}).get(model, _new_llm_stats()),
+                    )
+                    for model in models
+                }
+            else:
+                diff[key] = current.get(key, 0) - previous.get(key, 0)
+        return diff
+
+    def _format_usage_line(prefix, processed_count, interval_seeds, stats_delta, total_stats, model=None):
+        calls = stats_delta.get("calls", 0)
+        usage_calls = stats_delta.get("calls_with_usage", 0)
+        avg_in_per_seed = stats_delta.get("prompt_tokens", 0) / max(interval_seeds, 1)
+        avg_out_per_seed = stats_delta.get("completion_tokens", 0) / max(interval_seeds, 1)
+        avg_cache_per_seed = stats_delta.get("cached_tokens", 0) / max(interval_seeds, 1)
+        avg_in_per_call = stats_delta.get("prompt_tokens", 0) / max(usage_calls, 1)
+        avg_out_per_call = stats_delta.get("completion_tokens", 0) / max(usage_calls, 1)
+        model_part = f"model={model} | " if model else ""
+        return (
+            "%s after %d seeds | %sinterval calls=%d, usage_calls=%d, "
+            "avg_input_tokens/seed=%.1f, avg_output_tokens/seed=%.1f, "
+            "cache_hit_tokens/seed=%.1f, avg_input_tokens/call=%.1f, "
+            "avg_output_tokens/call=%.1f | total calls=%d, total input=%d, "
+            "total output=%d, total cache_hit=%d"
+            % (
+                prefix,
+                processed_count,
+                model_part,
+                calls,
+                usage_calls,
+                avg_in_per_seed,
+                avg_out_per_seed,
+                avg_cache_per_seed,
+                avg_in_per_call,
+                avg_out_per_call,
+                total_stats.get("calls", 0),
+                total_stats.get("prompt_tokens", 0),
+                total_stats.get("completion_tokens", 0),
+                total_stats.get("cached_tokens", 0),
+            )
+        )
+
+    def _log_seed_usage(processed_count, stats_delta, total_stats):
+        interval_seeds = 10 if processed_count % 10 == 0 else processed_count % 10
+        interval_seeds = interval_seeds or 10
+        usage_logger.info(_format_usage_line("LLM usage", processed_count, interval_seeds, stats_delta, total_stats))
+        for model in sorted(total_stats.get("by_model", {})):
+            model_delta = stats_delta.get("by_model", {}).get(model, _new_llm_stats())
+            model_total = total_stats.get("by_model", {}).get(model, _new_llm_stats())
+            usage_logger.info(_format_usage_line("LLM usage by model", processed_count, interval_seeds, model_delta, model_total, model=model))
+
     def _process_seed(seed_item):
+        begin_seed_stats()
+        result_count = 0
         try:
             results = pipeline.process_seed(
                 seed_item, corpus_lookup,
@@ -1182,20 +1273,54 @@ def main():
                             global_idx[0] += 1
                     total_valid[0] += len(results)
                 logger.info(f"Seed {seed_item['chunk_id'][:8]}... → {len(results)} valid multi-hop QAs")
-            return len(results) if results else 0
+            result_count = len(results) if results else 0
         except Exception as e:
             logger.error(f"Error processing seed {seed_item.get('chunk_id', '?')[:8]}: {e}")
-            return 0
+        finally:
+            seed_stats = end_seed_stats()
+        return result_count, seed_stats
 
+    completed_seeds = 0
+    seed_usage_total = _new_llm_stats()
+    last_report_stats = _new_llm_stats()
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = [executor.submit(_process_seed, s) for s in seeds]
         for fut in tqdm(as_completed(futures), total=len(futures), desc="Synthesizing"):
-            fut.result()
+            _, seed_stats = fut.result()
+            completed_seeds += 1
+            _add_llm_stats(seed_usage_total, seed_stats)
+            if completed_seeds % 10 == 0:
+                delta = _diff_llm_stats(seed_usage_total, last_report_stats)
+                _log_seed_usage(completed_seeds, delta, seed_usage_total)
+                last_report_stats = dict(seed_usage_total)
+
+    if completed_seeds % 10 != 0:
+        delta = _diff_llm_stats(seed_usage_total, last_report_stats)
+        _log_seed_usage(completed_seeds, delta, seed_usage_total)
 
     stats = get_stats()
     logger.info(f"Done! Generated {total_valid[0]} multi-hop QAs from {len(seeds)} seeds")
-    logger.info(f"LLM calls: {stats['calls']}, errors: {stats['errors']}, "
-                f"total latency: {stats['total_latency']:.1f}s")
+    usage_logger.info(f"FINAL LLM usage | calls={stats['calls']}, errors={stats['errors']}, "
+                      f"input_tokens={stats.get('prompt_tokens', 0)}, "
+                      f"output_tokens={stats.get('completion_tokens', 0)}, "
+                      f"cache_hit_tokens={stats.get('cached_tokens', 0)}, "
+                      f"usage_calls={stats.get('calls_with_usage', 0)}, "
+                      f"total_latency={stats['total_latency']:.1f}s")
+    for model, model_stats in sorted(stats.get("by_model", {}).items()):
+        usage_calls = model_stats.get("calls_with_usage", 0)
+        avg_in_per_call = model_stats.get("prompt_tokens", 0) / max(usage_calls, 1)
+        avg_out_per_call = model_stats.get("completion_tokens", 0) / max(usage_calls, 1)
+        usage_logger.info(
+            f"FINAL LLM usage by model | model={model} | "
+            f"calls={model_stats.get('calls', 0)}, errors={model_stats.get('errors', 0)}, "
+            f"input_tokens={model_stats.get('prompt_tokens', 0)}, "
+            f"output_tokens={model_stats.get('completion_tokens', 0)}, "
+            f"cache_hit_tokens={model_stats.get('cached_tokens', 0)}, "
+            f"usage_calls={usage_calls}, "
+            f"avg_input_tokens/call={avg_in_per_call:.1f}, "
+            f"avg_output_tokens/call={avg_out_per_call:.1f}, "
+            f"total_latency={model_stats.get('total_latency', 0.0):.1f}s"
+        )
 
 
 if __name__ == "__main__":
