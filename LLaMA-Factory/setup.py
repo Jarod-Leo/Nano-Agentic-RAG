@@ -41,6 +41,15 @@ def get_console_scripts() -> list[str]:
     return console_scripts
 
 
+def get_long_description() -> str:
+    readme_path = "README.md"
+    if os.path.exists(readme_path):
+        with open(readme_path, encoding="utf-8") as f:
+            return f.read()
+
+    return "Unified Efficient Fine-Tuning of 100+ LLMs"
+
+
 extra_require = {
     "torch": ["torch>=2.0.0", "torchvision>=0.15.0"],
     "torch-npu": ["torch==2.7.1", "torch-npu==2.7.1", "torchvision==0.22.1", "decorator"],
@@ -84,7 +93,7 @@ def main():
         author="hiyouga",
         author_email="hiyouga@buaa.edu.cn",
         description="Unified Efficient Fine-Tuning of 100+ LLMs",
-        long_description=open("README.md", encoding="utf-8").read(),
+        long_description=get_long_description(),
         long_description_content_type="text/markdown",
         keywords=["AI", "LLM", "GPT", "ChatGPT", "Llama", "Transformer", "DeepSeek", "Pytorch"],
         license="Apache 2.0 License",
