@@ -165,7 +165,7 @@ def get_from_llm(
     messages: Union[str, List[Dict[str, str]]],
     model_name: str = "Qwen3-4B",
     **kwargs,
-) -> Optional[str]:
+) -> Optional[Union[str, tuple[str, dict]]]:
     """统一 LLM 调用（本地 vLLM 或云端 API，全部走 OpenAI SDK）
 
     Args:
@@ -183,6 +183,7 @@ def get_from_llm(
             f"Add new models to MODEL_CONFIGS in llm/client.py."
         )
 
+    return_usage = kwargs.pop("return_usage", False)
     config = MODEL_CONFIGS[model_name]
     formatted = _format_messages(messages, model_name)
 
@@ -208,7 +209,17 @@ def get_from_llm(
             )
             text = resp.choices[0].message.content
             if text:
-                return _strip_think(text)
+                text = _strip_think(text)
+                if return_usage:
+                    raw_usage = getattr(resp, "usage", None)
+                    if hasattr(raw_usage, "model_dump"):
+                        usage = raw_usage.model_dump()
+                    elif isinstance(raw_usage, dict):
+                        usage = raw_usage
+                    else:
+                        usage = {}
+                    return text, usage
+                return text
             logger.error(f"Empty response from {model_name}")
             time.sleep(5)
         except Exception as e:
