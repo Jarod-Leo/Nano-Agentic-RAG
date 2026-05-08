@@ -40,7 +40,8 @@ python scripts/build_knowledge_graph.py \
 python scripts/gen_seed_qa.py \
   --corpus data/manuals/corpus.json \
   --output data/manuals/seeds.jsonl \
-  --model DeepSeek-V4-Pro \
+  --prompts scripts/synthesis_prompts_vehicle_manual_zh.yaml \
+  --model DeepSeek-V4-Flash \
   --workers 20 \
   --limit 2000
 ```
@@ -50,15 +51,16 @@ python scripts/gen_seed_qa.py \
 ```bash
 python scripts/domain_multihop_synthesis.py \
   --seeds data/manuals/seeds.jsonl \
+  --resume \
   --corpus data/manuals/corpus.json \
   --index-dir data/manuals/indexes/ \
   --output data/manuals/multihop_raw.jsonl \
   --lang zh \
-  --model MiniMax-M2.7 \
+  --model DeepSeek-V4-Flash \
   --merge-model DeepSeek-V4-Pro \
   --num-hop 4 \
   --topk 5 \
-  --workers 10
+  --workers 20
 ```
 作用：从种子 QA 自底向上生成 2-4 跳多跳问题，经过 4 重验证（语义检查、推理检查、单文档检查、全文档检查）
 
