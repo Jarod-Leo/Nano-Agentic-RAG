@@ -43,7 +43,7 @@ python scripts/gen_seed_qa.py \
   --prompts scripts/synthesis_prompts_vehicle_manual_zh.yaml \
   --model DeepSeek-V4-Flash \
   --workers 20 \
-  --limit 2000
+  --limit 400
 ```
 作用：从每个 chunk 生成 3 个原子 QA 对（question + answer）
 
@@ -51,13 +51,13 @@ python scripts/gen_seed_qa.py \
 ```bash
 python scripts/domain_multihop_synthesis.py \
   --seeds data/manuals/seeds.jsonl \
-  --resume \
+  --prompts scripts/synthesis_prompts_vehicle_manual_zh.yaml \
   --corpus data/manuals/corpus.json \
   --index-dir data/manuals/indexes/ \
   --output data/manuals/multihop_raw.jsonl \
   --lang zh \
   --model DeepSeek-V4-Flash \
-  --merge-model DeepSeek-V4-Pro \
+  --merge-model DeepSeek-V4-Flash \
   --num-hop 4 \
   --topk 5 \
   --workers 20
@@ -66,7 +66,24 @@ python scripts/domain_multihop_synthesis.py \
 
 **Step 3: 质量过滤**
 ```bash
-python scripts/judge_synthesis.py
-python scripts/clean_synthesis.py
+# 1. 规则清洗：去 trivial、去重
+python scripts/clean_synthesis.py \
+  --input data/manuals/multihop_raw.jsonl \
+  --output data/manuals/multihop_clean.jsonl
+
+# 2. LLM judge 打分
+python scripts/judge_synthesis.py \
+  --input data/manuals/multihop_clean.jsonl \
+  --corpus data/manuals/corpus.json \
+  --output data/manuals/multihop_judged.jsonl \
+  --model DeepSeek-V4-Flash \
+  --lang zh \
+  --workers 20
+
+# 3. 按 judge 分数过滤
+python scripts/judge_synthesis.py \
+  --input data/manuals/multihop_judged.jsonl \
+  --filter-only \
+  --output data/manuals/multihop_final.jsonl
 ```
 作用：过滤低质量合成结果
