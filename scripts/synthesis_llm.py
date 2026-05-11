@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """LLM 调用封装：用于多跳 QA 合成 pipeline，基于 mog-1 (GPT-5) via KS API"""
 import json
 import re

@@ -158,11 +158,23 @@ def get_judge_prompt(lang=None):
     return JUDGE_PROMPT_TEMPLATE_ZH if _get_lang(lang) == "zh" else JUDGE_PROMPT_TEMPLATE_EN
 
 
+def _qa_question(qa: dict) -> str:
+    return qa.get("question") or qa.get("final_question") or ""
+
+
+def _qa_answer(qa: dict) -> str:
+    return qa.get("answer") or qa.get("final_answer") or ""
+
+
+def _hop_chunk_id(hop: dict) -> str:
+    return hop.get("chunk_id") or hop.get("doc_chunk_id") or ""
+
+
 def build_hop_chain(qa: dict, corpus_lookup: dict) -> str:
     """构建 hop chain 文本，包含 chunk 内容摘要"""
     lines = []
     for hop in qa["hops"]:
-        chunk_id = hop.get("chunk_id", "?")
+        chunk_id = _hop_chunk_id(hop) or "?"
         chunk = corpus_lookup.get(chunk_id, {})
         # 截取 chunk 前 500 字符作为 evidence
         text_preview = chunk.get("text", "")[:500].replace("\n", " ")
@@ -184,8 +196,8 @@ def judge_one(qa: dict, corpus_lookup: dict, model: str = "gpt-oss-120b", lang: 
     """对单条 QA 做 judge 评分"""
     hop_chain = build_hop_chain(qa, corpus_lookup)
     prompt = get_judge_prompt(lang).format(
-        question=qa["question"],
-        answer=qa["answer"],
+        question=_qa_question(qa),
+        answer=_qa_answer(qa),
         hop_chain=hop_chain,
     )
 

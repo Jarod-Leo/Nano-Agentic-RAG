@@ -89,6 +89,14 @@ def is_trivial_hop(hop: dict) -> bool:
     return False
 
 
+def _qa_question(qa: dict) -> str:
+    return qa.get("question") or qa.get("final_question") or ""
+
+
+def _hop_chunk_id(hop: dict) -> str:
+    return hop.get("chunk_id") or hop.get("doc_chunk_id") or ""
+
+
 # ============================================================
 # Filters
 # ============================================================
@@ -120,7 +128,7 @@ def dedup_by_question(results: list, prefix_len: int = 80) -> tuple[list, list]:
     keep, removed = [], []
     seen = set()
     for r in results:
-        key = r["question"][:prefix_len].lower().strip()
+        key = _qa_question(r)[:prefix_len].lower().strip()
         if key in seen:
             removed.append(r)
         else:
@@ -134,7 +142,7 @@ def dedup_by_chunk_overlap(results: list, threshold: float = 0.8) -> tuple[list,
     keep, removed = [], []
     seen_sets = []
     for r in results:
-        chunks = {h["chunk_id"] for h in r["hops"] if h.get("chunk_id")}
+        chunks = {_hop_chunk_id(h) for h in r["hops"] if _hop_chunk_id(h)}
         is_dup = False
         for prev in seen_sets:
             if not chunks or not prev:
