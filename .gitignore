@@ -11,3 +11,4 @@ tmp/
 nohup.out
 models/
 data/financial_all/indexes/entity_embeddings.pkl
+logs/
